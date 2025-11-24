@@ -12,27 +12,6 @@ FastAPI-based MCP server that exposes Figma design tools for Claude Desktop. Con
 - 📡 Server-Sent Events (SSE) for Claude Desktop
 - 🔧 CORS support for browser clients
 
-## Quick Deploy
-
-### 1. Push to GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/figma-mcp-server.git
-git push -u origin main
-```
-
-### 2. Deploy to Render
-
-1. Go to [render.com](https://render.com)
-2. New Web Service → Connect your repo
-3. Add environment variable: `FIGMA_ACCESS_TOKEN=your-token`
-4. Deploy!
-
-Your MCP endpoint: `https://your-app.onrender.com/figma/sse`
-
 ## Connect with Claude Desktop
 
 Edit `claude_desktop_config.json`:
@@ -158,15 +137,19 @@ The server handles this automatically:
 
 ```
 figma-mcp-server/
-├── main.py              # FastAPI server
-├── requirements.txt     # Dependencies
-├── .env                 # Environment vars (not in git)
+├── main.py              # FastAPI MCP server (all-in-one)
+├── requirements.txt     # Python dependencies
+├── .env                 # Environment variables (not in git)
 ├── .gitignore          # Git ignore rules
-├── Dockerfile          # Container config
-├── Procfile            # Heroku/Railway
-├── render.yaml         # Render config
-└── railway.json        # Railway config
+├── Dockerfile          # Docker deployment config
+└── render.yaml         # Render deployment config
 ```
+
+**Why single-file?**
+- Simpler deployment (one file to read)
+- Easier for LLMs to understand context
+- Common pattern for MCP servers
+- FastAPI works great in monolithic style for small services
 
 ## Links
 
