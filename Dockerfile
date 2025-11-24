@@ -8,9 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py .
-COPY client.html .
 
-# Create figma_designs directory
+# Create figma_designs directory for generated output
 RUN mkdir -p figma_designs
 
 # Expose port (will be overridden by platform)
