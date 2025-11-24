@@ -1,0 +1,14 @@
+# Render.com deployment configuration
+services:
+  - type: web
+    name: figma-mcp-server
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: FIGMA_ACCESS_TOKEN
+        sync: false  # Set this in Render dashboard
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Optional, set in Render dashboard
