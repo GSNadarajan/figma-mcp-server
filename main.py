@@ -174,6 +174,8 @@ class ToolCall(BaseModel):
     arguments: Dict[str, Any]
 
 class MCPRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Optional[int] = None
     method: str
     params: Optional[Dict[str, Any]] = None
 
@@ -508,30 +510,59 @@ async def health():
 async def figma_messages_endpoint(request: MCPRequest):
     """Handle Figma MCP protocol messages"""
 
-    if request.method == "tools/list":
+    try:
+        if request.method == "tools/list":
+            result = {
+                "tools": MCPTools.get_tool_definitions()
+            }
+
+        elif request.method == "tools/call":
+            tool_name = request.params.get("name")
+            arguments = request.params.get("arguments", {})
+            result = await MCPTools.execute_tool(tool_name, arguments)
+
+        elif request.method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {}
+                },
+                "serverInfo": {
+                    "name": "figma-mcp-server",
+                    "version": "1.0.0"
+                }
+            }
+
+        else:
+            # Return JSON-RPC error for unknown method
+            return {
+                "jsonrpc": "2.0",
+                "id": request.id,
+                "error": {
+                    "code": -32601,
+                    "message": "Method not found",
+                    "data": f"Unknown method: {request.method}"
+                }
+            }
+
+        # Return JSON-RPC 2.0 success response
         return {
-            "tools": MCPTools.get_tool_definitions()
+            "jsonrpc": "2.0",
+            "id": request.id,
+            "result": result
         }
 
-    elif request.method == "tools/call":
-        tool_name = request.params.get("name")
-        arguments = request.params.get("arguments", {})
-        result = await MCPTools.execute_tool(tool_name, arguments)
-        return result
-
-    elif request.method == "initialize":
+    except Exception as e:
+        # Return JSON-RPC error response
         return {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {}
-            },
-            "serverInfo": {
-                "name": "figma-mcp-server",
-                "version": "1.0.0"
+            "jsonrpc": "2.0",
+            "id": request.id,
+            "error": {
+                "code": -32603,
+                "message": "Internal error",
+                "data": str(e)
             }
         }
-
-    return {"error": "Unknown method"}
 
 @app.get("/figma/sse")
 async def sse_endpoint():
