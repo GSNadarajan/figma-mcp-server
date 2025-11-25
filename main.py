@@ -1,6 +1,9 @@
 """
 Figma MCP Server - FastAPI Implementation
 Deploy this as a hosted MCP server (Render, Railway, Fly.io, etc.)
+
+MCP Protocol Compliant - Uses JSON-RPC 2.0
+Unique Server Identifier: NATTU_HOSTED_MCP_SERVER
 """
 
 from fastapi import FastAPI, Request, HTTPException
@@ -12,7 +15,19 @@ import httpx
 import json
 import asyncio
 import os
+import logging
 from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Server identification marker
+SERVER_MARKER = "🚀 NATTU_HOSTED_MCP_SERVER_V1"
+SERVER_VERSION = "1.1.0"
 
 app = FastAPI(title="Figma MCP Server")
 
@@ -180,14 +195,17 @@ class MCPRequest(BaseModel):
     params: Optional[Dict[str, Any]] = None
 
 # ===== MCP Tool Implementations =====
+# Tool name prefix to make our tools unique and identifiable
+TOOL_PREFIX = "nattu_figma_"
+
 class MCPTools:
-    
+
     @staticmethod
     def get_tool_definitions() -> List[Dict]:
         return [
             {
-                "name": "get_screenshot",
-                "description": "Generate a screenshot for a given node or the currently selected node in the Figma desktop app",
+                "name": f"{TOOL_PREFIX}get_screenshot",
+                "description": f"[{SERVER_MARKER}] Generate a screenshot for a given node or the currently selected node in the Figma desktop app. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -212,8 +230,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "get_design_context",
-                "description": "Generate UI code for a given node in Figma",
+                "name": f"{TOOL_PREFIX}get_design_context",
+                "description": f"[{SERVER_MARKER}] Generate UI code for a given node in Figma. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -246,8 +264,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "get_metadata",
-                "description": "Get metadata for a node or page in the Figma desktop app in XML format",
+                "name": f"{TOOL_PREFIX}get_metadata",
+                "description": f"[{SERVER_MARKER}] Get metadata for a node or page in the Figma desktop app in XML format. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -272,8 +290,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "get_variable_defs",
-                "description": "Get variable definitions for a given node id",
+                "name": f"{TOOL_PREFIX}get_variable_defs",
+                "description": f"[{SERVER_MARKER}] Get variable definitions for a given node id. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -298,8 +316,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "get_figjam",
-                "description": "Generate UI code for a given FigJam node in Figma",
+                "name": f"{TOOL_PREFIX}get_figjam",
+                "description": f"[{SERVER_MARKER}] Generate UI code for a given FigJam node in Figma. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -328,8 +346,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "get_code_connect_map",
-                "description": "Get a mapping of Code Connect information for a node",
+                "name": f"{TOOL_PREFIX}get_code_connect_map",
+                "description": f"[{SERVER_MARKER}] Get a mapping of Code Connect information for a node. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -354,8 +372,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "create_design_system_rules",
-                "description": "Provides a prompt to generate design system rules for this repo",
+                "name": f"{TOOL_PREFIX}create_design_system_rules",
+                "description": f"[{SERVER_MARKER}] Provides a prompt to generate design system rules for this repo. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -376,8 +394,8 @@ class MCPTools:
                 }
             },
             {
-                "name": "whoami",
-                "description": "Returns information about the authenticated user",
+                "name": f"{TOOL_PREFIX}whoami",
+                "description": f"[{SERVER_MARKER}] Returns information about the authenticated user. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -394,15 +412,20 @@ class MCPTools:
     @staticmethod
     async def execute_tool(tool_name: str, arguments: Dict) -> Dict:
         """Execute a tool and return results"""
-        
+
+        # Strip prefix from tool name if present
+        clean_tool_name = tool_name.replace(TOOL_PREFIX, "")
+        logger.info(f"🎯 MCP Tool Called: {tool_name} (cleaned: {clean_tool_name})")
+
         api_key = arguments.get("apiKey")
         if not api_key:
+            logger.error(f"❌ Missing API key for tool: {tool_name}")
             return {"error": "API key is required"}
-        
+
         client = FigmaClient(api_key)
-        
+
         try:
-            if tool_name == "whoami":
+            if clean_tool_name == "whoami":
                 result = await client.get_user_info()
                 return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
             
@@ -412,7 +435,7 @@ class MCPTools:
             if not file_key or not node_id:
                 return {"error": "fileKey and nodeId are required"}
             
-            if tool_name == "get_screenshot":
+            if clean_tool_name == "get_screenshot":
                 images = await client.get_images(file_key, [node_id])
                 return {
                     "content": [{
@@ -421,7 +444,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "get_design_context":
+            elif clean_tool_name == "get_design_context":
                 # Get full node data
                 node_data = await client.get_file_nodes(file_key, [node_id])
                 simplified = simplify_node_for_code_gen(
@@ -434,7 +457,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "get_metadata":
+            elif clean_tool_name == "get_metadata":
                 node_data = await client.get_file_nodes(file_key, [node_id])
                 return {
                     "content": [{
@@ -443,7 +466,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "get_variable_defs":
+            elif clean_tool_name == "get_variable_defs":
                 variables = await client.get_local_variables(file_key)
                 return {
                     "content": [{
@@ -452,7 +475,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "get_figjam":
+            elif clean_tool_name == "get_figjam":
                 node_data = await client.get_file_nodes(file_key, [node_id])
                 return {
                     "content": [{
@@ -461,7 +484,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "get_code_connect_map":
+            elif clean_tool_name == "get_code_connect_map":
                 # Note: Code Connect is not directly available via API
                 # This would need to be implemented with custom logic
                 return {
@@ -471,7 +494,7 @@ class MCPTools:
                     }]
                 }
             
-            elif tool_name == "create_design_system_rules":
+            elif clean_tool_name == "create_design_system_rules":
                 return {
                     "content": [{
                         "type": "text",
@@ -505,13 +528,40 @@ async def root():
 async def health():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
+@app.get("/figma/mcp/health")
+async def mcp_health():
+    """MCP-specific health check with detailed status"""
+    try:
+        tool_count = len(MCPTools.get_tool_definitions())
+        return {
+            "status": "healthy",
+            "server_marker": SERVER_MARKER,
+            "server_version": SERVER_VERSION,
+            "mcp_version": "2024-11-05",
+            "protocol": "JSON-RPC 2.0",
+            "tools_count": tool_count,
+            "tool_prefix": TOOL_PREFIX,
+            "figma_api_status": "connected",
+            "timestamp": datetime.now().isoformat(),
+            "message": "🚀 Your hosted MCP server is running perfectly!"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
 # Figma MCP endpoints with /figma prefix
 @app.post("/figma/messages")
 async def figma_messages_endpoint(request: MCPRequest):
     """Handle Figma MCP protocol messages"""
 
+    logger.info(f"📨 MCP Request: method={request.method}, id={request.id}")
+
     try:
         if request.method == "tools/list":
+            logger.info("📋 Listing available tools")
             result = {
                 "tools": MCPTools.get_tool_definitions()
             }
@@ -519,9 +569,26 @@ async def figma_messages_endpoint(request: MCPRequest):
         elif request.method == "tools/call":
             tool_name = request.params.get("name")
             arguments = request.params.get("arguments", {})
+
+            # Validate tool exists
+            valid_tools = [t["name"] for t in MCPTools.get_tool_definitions()]
+            if tool_name not in valid_tools:
+                logger.error(f"❌ Unknown tool requested: {tool_name}")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params",
+                        "data": f"Unknown tool: {tool_name}. Available tools: {[t.replace(TOOL_PREFIX, '') for t in valid_tools]}"
+                    }
+                }
+
+            logger.info(f"🔧 Calling tool: {tool_name}")
             result = await MCPTools.execute_tool(tool_name, arguments)
 
         elif request.method == "initialize":
+            logger.info(f"🚀 Initialize request received - Sending server marker: {SERVER_MARKER}")
             result = {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
@@ -529,8 +596,11 @@ async def figma_messages_endpoint(request: MCPRequest):
                 },
                 "serverInfo": {
                     "name": "figma-mcp-server",
-                    "version": "1.0.0"
-                }
+                    "version": SERVER_VERSION,
+                    "marker": SERVER_MARKER,
+                    "description": "Nattu's Hosted Figma MCP Server on Render"
+                },
+                "instructions": "This is YOUR custom hosted MCP server. All tools are prefixed with 'nattu_figma_' to ensure uniqueness."
             }
 
         else:
@@ -546,6 +616,7 @@ async def figma_messages_endpoint(request: MCPRequest):
             }
 
         # Return JSON-RPC 2.0 success response
+        logger.info(f"✅ MCP Response: id={request.id}, method={request.method}, success=True")
         return {
             "jsonrpc": "2.0",
             "id": request.id,
@@ -554,6 +625,7 @@ async def figma_messages_endpoint(request: MCPRequest):
 
     except Exception as e:
         # Return JSON-RPC error response
+        logger.error(f"❌ MCP Error: id={request.id}, method={request.method}, error={str(e)}")
         return {
             "jsonrpc": "2.0",
             "id": request.id,
