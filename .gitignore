@@ -25,7 +25,8 @@ mcp-venv/
 venv/
 ENV/
 env/
-
+figma-export/
+.claude/
 # Environment Variables
 .env
 .env.local

@@ -149,39 +149,152 @@ def extract_file_key_from_url(url: str) -> Optional[str]:
                 return parts[i + 1].split("?")[0]
     return None
 
-def simplify_node_for_code_gen(node: Dict) -> Dict:
-    """Simplify node data for code generation"""
+def rgb_to_hex(color: Dict) -> str:
+    """Convert Figma RGBA to hex color"""
+    r = int(color.get("r", 0) * 255)
+    g = int(color.get("g", 0) * 255)
+    b = int(color.get("b", 0) * 255)
+    a = color.get("a", 1)
+
+    if a < 1:
+        return f"rgba({r}, {g}, {b}, {a:.2f})"
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+def extract_styles_for_css(node: Dict) -> Dict:
+    """Extract CSS-ready styles from a Figma node"""
+    styles = {}
+
+    # Background color
+    if node.get("fills") and len(node["fills"]) > 0:
+        fill = node["fills"][0]
+        if fill.get("type") == "SOLID" and fill.get("visible", True):
+            styles["backgroundColor"] = rgb_to_hex(fill["color"])
+
+    # Border
+    if node.get("strokes") and len(node["strokes"]) > 0:
+        stroke = node["strokes"][0]
+        if stroke.get("type") == "SOLID":
+            styles["border"] = f"{node.get('strokeWeight', 1)}px solid {rgb_to_hex(stroke['color'])}"
+
+    # Border radius
+    if node.get("cornerRadius"):
+        styles["borderRadius"] = f"{node['cornerRadius']}px"
+
+    # Opacity
+    if node.get("opacity") and node["opacity"] < 1:
+        styles["opacity"] = node["opacity"]
+
+    # Text styles
+    if node.get("style"):
+        text_style = node["style"]
+        if text_style.get("fontFamily"):
+            styles["fontFamily"] = text_style["fontFamily"]
+        if text_style.get("fontSize"):
+            styles["fontSize"] = f"{text_style['fontSize']}px"
+        if text_style.get("fontWeight"):
+            styles["fontWeight"] = text_style["fontWeight"]
+        if text_style.get("letterSpacing"):
+            styles["letterSpacing"] = f"{text_style['letterSpacing']}px"
+        if text_style.get("lineHeightPx"):
+            styles["lineHeight"] = f"{text_style['lineHeightPx']}px"
+        if text_style.get("textAlignHorizontal"):
+            align_map = {"LEFT": "left", "CENTER": "center", "RIGHT": "right", "JUSTIFIED": "justify"}
+            styles["textAlign"] = align_map.get(text_style["textAlignHorizontal"], "left")
+
+    return styles
+
+def simplify_node_for_code_gen(node: Dict, include_images: bool = False) -> Dict:
+    """Simplify node data for code generation with CSS-ready styles"""
+    node_type = node.get("type", "")
+
     simplified = {
         "id": node.get("id"),
         "name": node.get("name"),
-        "type": node.get("type"),
+        "type": node_type,
+        "htmlTag": determine_html_tag(node),
     }
-    
+
     # Add layout properties
     if "absoluteBoundingBox" in node:
-        simplified["layout"] = node["absoluteBoundingBox"]
-    
-    # Add style properties
-    if "fills" in node:
-        simplified["fills"] = node["fills"]
-    if "strokes" in node:
-        simplified["strokes"] = node["strokes"]
-    if "effects" in node:
-        simplified["effects"] = node["effects"]
-    
-    # Add text properties
-    if node.get("type") == "TEXT":
-        simplified["characters"] = node.get("characters")
-        simplified["style"] = node.get("style")
-    
+        box = node["absoluteBoundingBox"]
+        simplified["layout"] = {
+            "width": f"{box.get('width', 0)}px",
+            "height": f"{box.get('height', 0)}px",
+            "x": box.get("x", 0),
+            "y": box.get("y", 0)
+        }
+
+    # Extract CSS-ready styles
+    simplified["styles"] = extract_styles_for_css(node)
+
+    # Add text content
+    if node_type == "TEXT":
+        simplified["text"] = node.get("characters", "")
+
+    # Add image references
+    if include_images and node_type == "RECTANGLE" and node.get("fills"):
+        for fill in node["fills"]:
+            if fill.get("type") == "IMAGE":
+                simplified["imageRef"] = fill.get("imageRef")
+
+    # Layout properties for container elements
+    if node.get("layoutMode"):
+        layout_map = {"HORIZONTAL": "row", "VERTICAL": "column"}
+        simplified["flexDirection"] = layout_map.get(node["layoutMode"], "column")
+
+        if node.get("primaryAxisAlignItems"):
+            simplified["justifyContent"] = node["primaryAxisAlignItems"].lower()
+        if node.get("counterAxisAlignItems"):
+            simplified["alignItems"] = node["counterAxisAlignItems"].lower()
+        if node.get("itemSpacing"):
+            simplified["gap"] = f"{node['itemSpacing']}px"
+        if node.get("paddingLeft") or node.get("paddingTop"):
+            simplified["padding"] = {
+                "top": node.get("paddingTop", 0),
+                "right": node.get("paddingRight", 0),
+                "bottom": node.get("paddingBottom", 0),
+                "left": node.get("paddingLeft", 0)
+            }
+
     # Recursively process children
     if "children" in node:
         simplified["children"] = [
-            simplify_node_for_code_gen(child) 
+            simplify_node_for_code_gen(child, include_images)
             for child in node["children"]
         ]
-    
+
     return simplified
+
+def determine_html_tag(node: Dict) -> str:
+    """Determine appropriate HTML tag based on Figma node type and name"""
+    node_type = node.get("type", "")
+    node_name = node.get("name", "").lower()
+
+    if node_type == "TEXT":
+        if "heading" in node_name or "title" in node_name:
+            return "h1"
+        if "subtitle" in node_name:
+            return "h2"
+        if "button" in node_name:
+            return "button"
+        return "p"
+
+    if "button" in node_name:
+        return "button"
+    if "input" in node_name or "field" in node_name:
+        return "input"
+    if "nav" in node_name or "menu" in node_name:
+        return "nav"
+    if "header" in node_name:
+        return "header"
+    if "footer" in node_name:
+        return "footer"
+
+    # Container elements
+    if node.get("layoutMode"):
+        return "div"
+
+    return "div"
 
 # ===== MCP Protocol Models =====
 class ToolCall(BaseModel):
@@ -411,7 +524,7 @@ class MCPTools:
     
     @staticmethod
     async def execute_tool(tool_name: str, arguments: Dict) -> Dict:
-        """Execute a tool and return results"""
+        """Execute a tool and return results in Claude-friendly format"""
 
         # Strip prefix from tool name if present
         clean_tool_name = tool_name.replace(TOOL_PREFIX, "")
@@ -427,86 +540,219 @@ class MCPTools:
         try:
             if clean_tool_name == "whoami":
                 result = await client.get_user_info()
-                return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
-            
+                user_info = f"""**Figma Account Information**
+
+👤 Name: {result.get('handle', 'Unknown')}
+📧 Email: {result.get('email', 'N/A')}
+🆔 ID: {result.get('id', 'N/A')}
+
+✅ Authentication successful! You can now use this API key to access Figma designs."""
+                return {"content": [{"type": "text", "text": user_info}]}
+
             file_key = arguments.get("fileKey")
             node_id = arguments.get("nodeId")
-            
+
             if not file_key or not node_id:
                 return {"error": "fileKey and nodeId are required"}
-            
+
             if clean_tool_name == "get_screenshot":
-                images = await client.get_images(file_key, [node_id])
+                images_response = await client.get_images(file_key, [node_id])
+
+                if "err" in images_response and images_response["err"]:
+                    return {"error": f"Figma API error: {images_response['err']}"}
+
+                image_urls = images_response.get("images", {})
+                if not image_urls or node_id not in image_urls:
+                    return {"error": f"No image found for node {node_id}"}
+
+                image_url = image_urls[node_id]
+
+                result_text = f"""**Screenshot Generated Successfully**
+
+🖼️  Node ID: `{node_id}`
+🔗 Image URL: {image_url}
+
+The screenshot is ready. You can use this URL to display or download the image.
+Note: Figma image URLs expire after some time, so use them promptly."""
+
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": json.dumps(images, indent=2)
-                    }]
+                    "content": [
+                        {"type": "text", "text": result_text},
+                        {"type": "text", "text": f"\n\nImage URL for embedding: {image_url}"}
+                    ]
                 }
-            
+
             elif clean_tool_name == "get_design_context":
                 # Get full node data
+                logger.info(f"🔍 Fetching design context for node {node_id} in file {file_key}")
                 node_data = await client.get_file_nodes(file_key, [node_id])
-                simplified = simplify_node_for_code_gen(
-                    node_data["nodes"][node_id]["document"]
-                )
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": f"Design Context:\n{json.dumps(simplified, indent=2)}"
-                    }]
-                }
-            
+
+                if "err" in node_data and node_data["err"]:
+                    return {"error": f"Figma API error: {node_data['err']}"}
+
+                # Also fetch images for this node
+                try:
+                    images_response = await client.get_images(file_key, [node_id], scale=2)
+                    image_url = images_response.get("images", {}).get(node_id)
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not fetch image: {e}")
+                    image_url = None
+
+                document = node_data["nodes"][node_id]["document"]
+                simplified = simplify_node_for_code_gen(document, include_images=True)
+
+                # Create a structured, readable response
+                result_text = f"""**Design Context Extracted**
+
+📐 Node: {simplified['name']} (Type: {simplified['type']})
+🏷️  HTML Tag: <{simplified['htmlTag']}>
+📏 Dimensions: {simplified.get('layout', {}).get('width', 'auto')} × {simplified.get('layout', {}).get('height', 'auto')}
+
+**CSS Styles:**
+```css
+{json.dumps(simplified.get('styles', {}), indent=2)}
+```
+
+**Full Structure for Code Generation:**
+```json
+{json.dumps(simplified, indent=2)}
+```
+"""
+
+                if image_url:
+                    result_text += f"\n**Visual Reference:**\n🖼️  {image_url}\n"
+
+                result_text += f"""
+
+**Instructions for Code Generation:**
+1. Use the `htmlTag` field to determine HTML elements
+2. Apply the `styles` object directly as CSS
+3. Use `layout` for positioning (width, height)
+4. For containers with `flexDirection`, use CSS flexbox
+5. For TEXT nodes, use the `text` field for content
+6. Process `children` array recursively for nested elements
+
+This structure is optimized for HTML/CSS code generation. All colors are in hex format, dimensions include units, and layout properties map directly to CSS."""
+
+                return {"content": [{"type": "text", "text": result_text}]}
+
             elif clean_tool_name == "get_metadata":
                 node_data = await client.get_file_nodes(file_key, [node_id])
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": json.dumps(node_data, indent=2)
-                    }]
-                }
-            
+
+                if "err" in node_data and node_data["err"]:
+                    return {"error": f"Figma API error: {node_data['err']}"}
+
+                document = node_data["nodes"][node_id]["document"]
+
+                metadata = f"""**Node Metadata**
+
+Name: {document.get('name', 'Unnamed')}
+Type: {document.get('type', 'Unknown')}
+ID: {document.get('id', 'N/A')}
+
+Raw metadata (for advanced use):
+```json
+{json.dumps(node_data, indent=2)}
+```"""
+
+                return {"content": [{"type": "text", "text": metadata}]}
+
             elif clean_tool_name == "get_variable_defs":
                 variables = await client.get_local_variables(file_key)
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": json.dumps(variables, indent=2)
-                    }]
-                }
-            
+
+                if not variables or "meta" not in variables:
+                    return {"content": [{"type": "text", "text": "No design variables found in this file."}]}
+
+                var_collections = variables.get("meta", {}).get("variableCollections", {})
+                var_defs = variables.get("meta", {}).get("variables", {})
+
+                result_text = f"""**Design Variables (Tokens)**
+
+Found {len(var_defs)} variables in {len(var_collections)} collections.
+
+**Collections:**
+{json.dumps(list(var_collections.keys()), indent=2)}
+
+**Variables:**
+```json
+{json.dumps(var_defs, indent=2)}
+```
+
+These can be used as CSS custom properties or design tokens."""
+
+                return {"content": [{"type": "text", "text": result_text}]}
+
             elif clean_tool_name == "get_figjam":
                 node_data = await client.get_file_nodes(file_key, [node_id])
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": json.dumps(node_data, indent=2)
-                    }]
-                }
-            
+
+                result_text = f"""**FigJam Node Data**
+
+```json
+{json.dumps(node_data, indent=2)}
+```"""
+
+                return {"content": [{"type": "text", "text": result_text}]}
+
             elif clean_tool_name == "get_code_connect_map":
-                # Note: Code Connect is not directly available via API
-                # This would need to be implemented with custom logic
                 return {
                     "content": [{
                         "type": "text",
-                        "text": "Code Connect mapping not available via public API"
+                        "text": "⚠️  Code Connect mapping is not available via the public Figma API. This feature requires Figma Enterprise."
                     }]
                 }
-            
+
             elif clean_tool_name == "create_design_system_rules":
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": "Design system rules generation prompt would be provided here"
-                    }]
-                }
-            
+                prompt_text = f"""**Design System Rules Generation**
+
+Based on the Figma design at node `{node_id}`, you should:
+
+1. Extract color palette from fills and strokes
+2. Identify typography patterns (fonts, sizes, weights)
+3. Note spacing patterns (padding, gaps)
+4. Document component patterns
+5. Create reusable CSS variables
+
+Example output structure:
+```css
+:root {{
+  /* Colors */
+  --primary-color: #007bff;
+  --secondary-color: #6c757d;
+
+  /* Typography */
+  --font-family-base: 'Inter', sans-serif;
+  --font-size-base: 16px;
+
+  /* Spacing */
+  --spacing-unit: 8px;
+}}
+```
+
+Use the `get_design_context` tool first to extract the actual design data, then generate these rules."""
+
+                return {"content": [{"type": "text", "text": prompt_text}]}
+
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
-                
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                return {
+                    "error": "⚠️  Rate limit exceeded. Please wait 60 seconds before trying again. Figma limits API requests to prevent abuse."
+                }
+            elif e.response.status_code == 403:
+                return {
+                    "error": "🔒 Access denied. Check that your Figma API key has permission to access this file."
+                }
+            elif e.response.status_code == 404:
+                return {
+                    "error": f"❌ Not found. The file key '{arguments.get('fileKey')}' or node ID '{arguments.get('nodeId')}' doesn't exist or you don't have access."
+                }
+            else:
+                return {"error": f"Figma API error {e.response.status_code}: {str(e)}"}
         except Exception as e:
-            return {"error": str(e)}
+            logger.error(f"❌ Tool execution error: {str(e)}")
+            return {"error": f"Internal error: {str(e)}"}
 
 # ===== FastAPI Endpoints =====
 
@@ -647,7 +893,7 @@ async def sse_endpoint():
         # Keep connection alive
         while True:
             await asyncio.sleep(30)
-            yield f"data: {json.dumps({'type': 'ping', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'ping', 'timestamp': datetime.now().isoformat()})}\n\n"
     
     return StreamingResponse(
         event_stream(),
