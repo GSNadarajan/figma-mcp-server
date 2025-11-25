@@ -31,6 +31,9 @@ figma-export/
 .env
 .env.local
 .env.*.local
+nattu-hosted-mcp-tools.txt
+official-figma-mcp-tools.txt
+
 
 # IDE
 .vscode/
