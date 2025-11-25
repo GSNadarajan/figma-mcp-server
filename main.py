@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Server identification marker
 SERVER_MARKER = "🚀 NATTU_HOSTED_MCP_SERVER_V1"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.2.0"  # Performance optimizations: depth limits, child limits, stricter timeouts
 
 app = FastAPI(title="Figma MCP Server")
 
@@ -51,8 +51,12 @@ class FigmaClient:
     async def _request_with_retry(self, method: str, url: str, **kwargs):
         """Make request with retry logic for rate limiting"""
         import asyncio
-        max_retries = 3
+        max_retries = 2  # Reduced from 3 to 2 to prevent long waits
         base_delay = 2
+
+        # Set default timeout if not provided
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = 20.0  # 20 second timeout for API calls
 
         for attempt in range(max_retries):
             try:
@@ -64,17 +68,23 @@ class FigmaClient:
 
                     if response.status_code == 429:
                         # Rate limited - check Retry-After header
-                        retry_after = int(response.headers.get('Retry-After', base_delay * (2 ** attempt)))
-                        print(f"Rate limited. Waiting {retry_after} seconds before retry {attempt + 1}/{max_retries}...")
+                        retry_after = min(int(response.headers.get('Retry-After', base_delay * (2 ** attempt))), 10)  # Cap at 10 seconds
+                        logger.warning(f"⏱️  Rate limited. Waiting {retry_after}s before retry {attempt + 1}/{max_retries}")
                         await asyncio.sleep(retry_after)
                         continue
 
                     response.raise_for_status()
                     return response.json()
+            except httpx.TimeoutException:
+                logger.error(f"⏱️  Request timeout for {url}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(base_delay)
+                    continue
+                raise Exception("Request timeout - the Figma API took too long to respond")
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429 and attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    print(f"Rate limited. Waiting {delay} seconds before retry {attempt + 1}/{max_retries}...")
+                    delay = min(base_delay * (2 ** attempt), 8)  # Cap at 8 seconds
+                    logger.warning(f"⏱️  Rate limited. Waiting {delay}s before retry {attempt + 1}/{max_retries}")
                     await asyncio.sleep(delay)
                     continue
                 raise
@@ -203,8 +213,15 @@ def extract_styles_for_css(node: Dict) -> Dict:
 
     return styles
 
-def simplify_node_for_code_gen(node: Dict, include_images: bool = False) -> Dict:
-    """Simplify node data for code generation with CSS-ready styles"""
+def simplify_node_for_code_gen(node: Dict, include_images: bool = False, max_depth: int = 4, current_depth: int = 0) -> Dict:
+    """Simplify node data for code generation with CSS-ready styles
+
+    Args:
+        node: Figma node data
+        include_images: Whether to include image references
+        max_depth: Maximum recursion depth (default 4 levels)
+        current_depth: Current recursion depth (internal use)
+    """
     node_type = node.get("type", "")
 
     simplified = {
@@ -256,12 +273,24 @@ def simplify_node_for_code_gen(node: Dict, include_images: bool = False) -> Dict
                 "left": node.get("paddingLeft", 0)
             }
 
-    # Recursively process children
-    if "children" in node:
+    # Recursively process children (with depth limit to prevent timeouts)
+    if "children" in node and current_depth < max_depth:
+        children = node["children"]
+        # Limit number of children to process (max 20 per level)
+        if len(children) > 20:
+            logger.warning(f"⚠️  Node has {len(children)} children, limiting to first 20 for performance")
+            children = children[:20]
+            simplified["childrenTruncated"] = True
+            simplified["totalChildren"] = len(node["children"])
+
         simplified["children"] = [
-            simplify_node_for_code_gen(child, include_images)
-            for child in node["children"]
+            simplify_node_for_code_gen(child, include_images, max_depth, current_depth + 1)
+            for child in children
         ]
+    elif "children" in node and current_depth >= max_depth:
+        # Reached max depth - just indicate there are children
+        simplified["childrenCount"] = len(node["children"])
+        simplified["note"] = "Children omitted due to depth limit (prevents timeouts for complex designs)"
 
     return simplified
 
