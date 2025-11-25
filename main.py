@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Server identification marker
 SERVER_MARKER = "🚀 NATTU_HOSTED_MCP_SERVER_V1"
-SERVER_VERSION = "1.2.0"  # Performance optimizations: depth limits, child limits, stricter timeouts
+SERVER_VERSION = "1.3.0"  # Enhanced tool descriptions matching official Figma MCP for better LLM understanding
 
 app = FastAPI(title="Figma MCP Server")
 
@@ -347,17 +347,17 @@ class MCPTools:
         return [
             {
                 "name": f"{TOOL_PREFIX}get_screenshot",
-                "description": f"[{SERVER_MARKER}] Generate a screenshot for a given node or the currently selected node in the Figma desktop app. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Generate a screenshot for a given node or the currently selected node in the Figma desktop app. Use the nodeId parameter to specify a node id. nodeId parameter is REQUIRED. Use the fileKey parameter to specify the file key. fileKey parameter is REQUIRED. If a URL is provided, extract the file key and node id from the URL. For example, if given the URL https://figma.com/design/pqrs/ExampleFile?node-id=1-2 the extracted fileKey would be `pqrs` and the extracted nodeId would be `1:2`. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -365,7 +365,7 @@ class MCPTools:
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages used by the client"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -373,17 +373,17 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}get_design_context",
-                "description": f"[{SERVER_MARKER}] Generate UI code for a given node in Figma. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Generate UI code for a given node in Figma. Use the nodeId parameter to specify a node id. Use the fileKey parameter to specify the file key. If a URL is provided, extract the node id from the URL, for example, if given the URL https://figma.com/design/:fileKey/:fileName?node-id=1-2, the extracted nodeId would be `1:2` and the fileKey would be `:fileKey`. The response will contain a code string and a JSON of download URLs for the assets referenced in the code. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -391,15 +391,15 @@ class MCPTools:
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages for code generation"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         },
                         "clientFrameworks": {
                             "type": "string",
-                            "description": "Frameworks used by the client"
+                            "description": "A comma separated list of frameworks used by the client in the current context, e.g. `react`, `vue`, `django` etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which frameworks are being used. If you are unsure, it is better to list `unknown` than to make a guess"
                         },
                         "forceCode": {
                             "type": "boolean",
-                            "description": "Force code generation even if response is large"
+                            "description": "Whether code should always be returned, instead of returning just metadata if the output size is too large. Only set this when the user directly requests to force the code."
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -407,17 +407,17 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}get_metadata",
-                "description": f"[{SERVER_MARKER}] Get metadata for a node or page in the Figma desktop app in XML format. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] IMPORTANT: Always prefer to use get_design_context tool. Get metadata for a node or page in the Figma desktop app in XML format. Useful only for getting an overview of the structure, it only includes node IDs, layer types, names, positions and sizes. You can call get_design_context on the node IDs contained in this response. Use the nodeId parameter to specify a node id, it can also be the page id (e.g. 0:1). Extract the node id from the URL, for example, if given the URL https://figma.com/design/:fileKey/:fileName?node-id=1-2, the extracted nodeId would be `1:2`. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -425,7 +425,7 @@ class MCPTools:
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages used"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -433,17 +433,17 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}get_variable_defs",
-                "description": f"[{SERVER_MARKER}] Get variable definitions for a given node id. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Get variable definitions for a given node id. E.g. {{'icon/default/secondary': #949494}}. Variables are reusable values that can be applied to all kinds of design properties, such as fonts, colors, sizes and spacings. Use the nodeId parameter to specify a node id. Extract the node id from the URL, for example, if given the URL https://figma.com/design/:fileKey/:fileName?node-id=1-2, the extracted nodeId would be `1:2`. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -451,7 +451,7 @@ class MCPTools:
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages used"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -459,17 +459,17 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}get_figjam",
-                "description": f"[{SERVER_MARKER}] Generate UI code for a given FigJam node in Figma. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Generate UI code for a given FigJam node in Figma. Use the nodeId parameter to specify a node id. Use the fileKey parameter to specify the file key. If a URL is provided, extract the node id from the URL, for example, if given the URL https://figma.com/board/:fileKey/:fileName?node-id=1-2, the extracted nodeId would be `1:2` and the fileKey would be `:fileKey`. IMPORTANT: This tool only works for FigJam files, not other Figma files. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -477,11 +477,11 @@ class MCPTools:
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages used"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         },
                         "includeImagesOfNodes": {
                             "type": "boolean",
-                            "description": "Include images of nodes in response"
+                            "description": "Whether to include images of nodes in the response"
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -489,17 +489,17 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}get_code_connect_map",
-                "description": f"[{SERVER_MARKER}] Get a mapping of Code Connect information for a node. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Get a mapping of {{[nodeId]: {{codeConnectSrc: e.g. location of component in codebase, codeConnectName: e.g. name of component in codebase}}}}. E.g. {{'1:2': {{ codeConnectSrc: 'https://github.com/foo/components/Button.tsx', codeConnectName: 'Button' }} }}. Use the nodeId parameter to specify a node id. Use the fileKey parameter to specify the file key. If a URL is provided, extract the node id from the URL, for example, if given the URL https://figma.com/design/:fileKey/:fileName?node-id=1-2, the extracted nodeId would be `1:2` and the fileKey would be `:fileKey`. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "fileKey": {
                             "type": "string",
-                            "description": "The key of the Figma file to use"
+                            "description": "The key of the Figma file to use. If the URL is provided, extract the file key from the URL. The given URL must be in the format https://figma.com/design/:fileKey/:fileName?node-id=:int1-:int2. The extracted fileKey would be `:fileKey`."
                         },
                         "apiKey": {
                             "type": "string",
@@ -507,7 +507,7 @@ class MCPTools:
                         },
                         "codeConnectLabel": {
                             "type": "string",
-                            "description": "Label to fetch Code Connect info for a language/framework"
+                            "description": "The label used to fetch Code Connect information for a particular language or framework when multiple Code Connect mappings exist."
                         }
                     },
                     "required": ["nodeId", "fileKey", "apiKey"]
@@ -521,15 +521,15 @@ class MCPTools:
                     "properties": {
                         "nodeId": {
                             "type": "string",
-                            "description": "The ID of the node in the Figma document"
+                            "description": "The ID of the node in the Figma document, eg. \"123:456\" or \"123-456\". This should be a valid node ID in the Figma document."
                         },
                         "clientLanguages": {
                             "type": "string",
-                            "description": "Programming languages used by the client"
+                            "description": "A comma separated list of programming languages used by the client in the current context in string form, e.g. `javascript`, `html,css,typescript`, etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which languages are being used. If you are unsure, it is better to list `unknown` than to make a guess."
                         },
                         "clientFrameworks": {
                             "type": "string",
-                            "description": "Frameworks used by the client"
+                            "description": "A comma separated list of frameworks used by the client in the current context, e.g. `react`, `vue`, `django` etc. If you do not know, please list `unknown`. This is used for logging purposes to understand which frameworks are being used. If you are unsure, it is better to list `unknown` than to make a guess"
                         }
                     },
                     "required": ["nodeId"]
@@ -537,7 +537,7 @@ class MCPTools:
             },
             {
                 "name": f"{TOOL_PREFIX}whoami",
-                "description": f"[{SERVER_MARKER}] Returns information about the authenticated user. This uses YOUR hosted MCP server on Render.",
+                "description": f"[{SERVER_MARKER}] Returns information about the authenticated user. If you are experiencing permission issues with other tools, you can use this tool to get information about who is authenticated and validate the right user is logged in. This uses YOUR hosted MCP server on Render.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
